@@ -84,13 +84,13 @@ We will deploy the management cluster twice for this workshop. The first time we
 2. becuase we are in a small environment choose a development cluster
 3. select NSX ALB as the loadbalancer type
    1. leave control plane endpoint blank
-4. fill in the NSX ALB details, this is where we will simulate failure by putting in an incorrect network name.
+4. fill in the NSX ALB details
    1. you can copy the cert from the AVI UI under templates-> security ->SSL/TLS Certificates
    2. select default cloud
-   3. in the mgmt cluster control plane vip network name we are going to put in an incorrect name
+   3. select the correcrt network settings
 5. skip through metadata
 6. select the correct locations for the resources in the cluster
-7. select the network for k8s network settings in our case this is the same network. this is where nodes get deployed
+7. select the network for k8s network settings in our case let's select an incorrect network to simulate the failure. this is where nodes get deployed
 8. continue through to review configuration
 9. export configuration and then deploy. 
 10. copy the CLI command for when it fails
@@ -105,18 +105,31 @@ kind get clusters
 
 kind export kubeconfig --name <cluster-name> --kubeconfig ./kind-config
 
+export KUBECONFIG=./kind-config
 ```
 2. check for any failing pods
 
+```bash
+kubectl get pods -A 
+```
+
 3. check cluster api objects for errors
 
-4. check capi logs
+```bash
+kubectl get cluster -n tkg-system -o yaml
+kubectl get kcp -n tkg-system -o yaml
+kubectl get md -n tkg-system -o yaml
+kubectl get machines -n tkg-system
+kubectl get vspheremachines -n tkg-system
+```
 
-5. check avi UI to see if there are any errors
+4. check avi UI to see if there are any errors
+ 
+5. check capi logs
 
 6. check to see if everything is getting IPs(VMs, LB etc.)
    
-7. check AKO logs
+
 
 
 ### Deploy HA mgmt cluster
