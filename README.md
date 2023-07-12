@@ -74,26 +74,31 @@ We will deploy the management cluster twice for this workshop. The first time we
 ```
 3. select vsphere from the UI.
 4. jump to one of the sections below for the simulated failure or real deploy
-
-
-### Simulate and troubleshoot failure
-
-1. plug in the vcenter details and connect
+5. plug in the vcenter details and connect
    1. when it prompts select the option to deploy mgmt cluster
    2. add a ssh key
-2. becuase we are in a small environment choose a development cluster
-3. select NSX ALB as the loadbalancer type
+6. becuase we are in a small environment choose a development cluster
+7. select NSX ALB as the loadbalancer type
    1. leave control plane endpoint blank
-4. fill in the NSX ALB details
+8. fill in the NSX ALB details
    1. you can copy the cert from the AVI UI under templates-> security ->SSL/TLS Certificates
    2. select default cloud
    3. select the correcrt network settings
-5. skip through metadata
-6. select the correct locations for the resources in the cluster
-7. select the network for k8s network settings in our case let's select an incorrect network to simulate the failure. this is where nodes get deployed
-8. continue through to review configuration
-9. export configuration and then deploy. 
-10. copy the CLI command for when it fails
+9. skip through metadata
+10. select the correct locations for the resources in the cluster
+
+----**to simulate an issue with netwokring**----
+
+11. select the network for k8s network settings in our case let's select an incorrect network to simulate the failure. this is where nodes get deployed
+
+----**to deploy sucessfully**----
+
+11. select the network for k8s network settings, this is where nodes get deployed.
+
+----
+12. continue through to review configuration
+13. export configuration and then deploy. 
+14. copy the CLI command for when it fails
 
 
 #### Troubleshoot the issue
@@ -127,31 +132,121 @@ kubectl get vspheremachines -n tkg-system
  
 5. check capi logs
 
+```bash
+kubectl get pods -A | grep cap
+
+kubectl logs -f -n capv-system <capv pod> 
+```
+
 6. check to see if everything is getting IPs(VMs, LB etc.)
-   
+   1. this can be checked in the AVI UI and vcenter UI, make sure that the k8s nodes are getting ips
 
 
 
-### Deploy HA mgmt cluster
 
 ## Integrate mgmt cluster with TMC
 
-1. add cluster through the UI
+### Login to TMC with the tanzu cli
+
+1. install the tmc plugins into the tanzu cli
+
+```bash
+#enter the api token on prompt
+tanzu context create --endpoint <your tmc endpoint> --name tmc
+```
+2. once the context is created it will download all of the plugins needed for tmc
+
+### Add the management cluster to TMC
+
+1. login to the mgmt cluster kube context
+```bash
+tanzu mc kubeconfig  get --admin
+kubectl config use-context <admin context>
+``` 
+2. add the management cluster through the TMC CLI. We can also do this through the UI.
+   1. replace the cluster name and cluster group in the below command
+
+```bash
+cat <<EOF > mgmt.yaml
+fullName:
+  name: <cluster-name>
+spec:
+  defaultClusterGroup: <cluster-group>
+  kubernetesProviderType: VMWARE_TANZU_KUBERNETES_GRID
+type:
+  kind: ManagementCluster
+  package: vmware.tanzu.manage.v1alpha1.managementcluster
+  version: v1alpha1
+EOF
+
+#register the new mgmt cluster with tmc
+tanzu tmc management-cluster create -f mgmt.yaml
+tanzu management-cluster register <cluster-name> --continue-bootstrap
+kubectl apply -f k8s-register-manifest.yaml
+```
+
 2. check the agent status in the management cluster with kubectl
 
 ```bash
 kubectl get pods -n vmware-system-tmc
 ```
 
-
+3. check in the TMC UI and see if everything is healthy with the mgmt cluster
 
 ## Deploy clusters
 
+
 ### Using Tanzu CLI
+
+[Official docs](https://docs.vmware.com/en/VMware-Tanzu-Kubernetes-Grid/2.2/using-tkg-22/workload-clusters-configure-vsphere.html)
+
+1. Copy the configuration templaet from the docs above. additionally the one used to create the management cluster as a good starting point for copying some of the vsphere variables. The one used to create the managemnent cluster will be in `~/.config/tanzu/tkg/clusterconfigs/`. all of the variables that are available are listed [here](https://docs.vmware.com/en/VMware-Tanzu-Kubernetes-Grid/2.2/tkg-deploy-mc-22/mgmt-deploy-config-ref.html)
+
+2. Edit the cluster config and update any setting that should be changed. 
+
+3. with tkg 2.x cluster class based clusters were introduced. we can still use the TKG legacy yaml config which is what was created above. there are two options for using it now. we can either have it convert the config to a cluster class config and save it for review or auto apply. in this case we will have it auto apply. you can still use `--dry-run` to get the output without applying
+
+```bash
+tanzu config set features.cluster.auto-apply-generated-clusterclass-based-configuration true
+```
+
+1. Create the cluster. 
+
+```bash
+tanzu cluster create -f workload-cluster.yaml
+```
+
 
 ### Using TMC
 
-### Using K8s
+### Using CAPI Cluster CRD
+
+This was referenced above when talking about cluster class based clusters. TKG now allows for use of the `cluster` CRD along with cluster classes to deploy TKG clusters. this means you can now manage clusters with native k8s yaml.
+
+legacy to cluster class variable reference -  [docs](https://docs.vmware.com/en/VMware-Tanzu-Kubernetes-Grid/2.2/using-tkg-22/workload-clusters-legacy-cc.html)
+
+
+1. using the same configuartion file from the previous step we are going to generate a cluster object spec to start with.
+
+```bash
+tanzu cluster create -f workload-cluster.yaml --dry-run > workload-cc.yaml
+```
+2. edit this file and change the cluster name and modify any field that you want. Inspect how this object based cluster's field relate to the legacy variables using the referenced doc.
+
+3. create the new cluster
+
+```bash
+kubectl apply -f workload-cc.yaml
+```
+
+4. monitor the cluster status with kubectl or tanzu cli
+
+```bash
+#check the conditions on the status
+kubectl get cluster <clustername> -o yaml
+
+tanzu cluster get <clustername>
+```
 
 
 ## Custom cluster class
