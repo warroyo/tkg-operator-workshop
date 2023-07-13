@@ -1,0 +1,23 @@
+fullName:
+  clusterName: <cluster-name>
+  managementClusterName: <mgmt-name>
+  name: fluent-package
+  provisionerName: <provisiooner name>
+spec:
+  inlineValues:
+    fluent_bit:
+      config:
+      daemonset:
+        podAnnotations: {}
+        podLabels: {}
+        resources: {}
+    namespace: tanzu-system-logging
+  packageRef:
+    packageMetadataName: fluent-bit.tanzu.vmware.com
+    versionSelection:
+      constraints: 1.9.5+vmware.1-tkg.2
+  roleBindingScope: CLUSTER
+type:
+  kind: Install
+  package: vmware.tanzu.manage.v1alpha1.cluster.namespace.tanzupackage.install
+  version: v1alpha1

@@ -325,18 +325,47 @@ Tanuz packages can be install with the tanzu cli, tmc, or through gitops. These 
 
 ## Install Fluent bit using TMC
 
-1. go into the tmc UI and go to the catalog and select fluent bit. this will show us all availabel values etc. This si helpful for seeing what's possible. 
-2. fluent bit config is exposed throught the package values, anything in the `config` section is direct from the fluent bit [docs](https://docs.fluentbit.io/manual/)
-3.  
+1. go into the tmc UI and go to the catalog and select fluent bit. this will show us all availabel values etc. This is helpful for seeing what's possible. 
+2. fluent bit config is exposed through the package values, anything in the `config` section is direct from the fluent bit [docs](https://docs.fluentbit.io/manual/)
+3. create a cluent bit config that matches your needs and add it to the `configs/fluent-install.yaml` file under the `spec.inlineValues.fluent_bit.config` section. Also replace the values for the cluster naming.
+4. install the package using the tanzu cli 
+
+```bash
+tanzu tmc tanzupackage install create -f configs/fluent-install.yaml
+```
 
 ## Inspect the objects that it creates
 
 everything is a k8s object so it can be managed wit gitops also.
 
 1. check the package repository
+
+```bash
+kubectl get pkgr -A
+```
+
 2. check the package install
+
+```bash
+kubectl get pkgi -A
+kubectl get pkgi -n <namespace> <package name>
+```
+
 3. check the app
+
+```bash
+kubectl get apps -A
+kubectl get apps -n <namespace> <app name>
+```
+
 4. check the values
+
+```bash
+kubectl get pkgi -A
+kubectl get pkgi -n <namespace> <package name>
+#check the name of the secret that is used for the values under spec.values.secretRef
+kubectl get secrets -n  <namespace> <secret name> -o yaml
+```
 
 # Day 2 Ops
 
@@ -416,8 +445,30 @@ kubectl patch secret/avi-controller-ca  -n tkg-system-networking -p '{"data": {"
 
 ## Troubleshoot Tanzu packages
 
+using the same package install from above let's make it fail the install and troubleshoot it
+
+### deploy failed package
+
+1. modify the package install yaml from the previous step. We will change one of the values to be incorrect. in the fluent bit values spec change the `podAnnotations: {}` to `podAnnotations: []`
+2. apply the change and check the package status. it should be in a reconcile failed state.
+
+### troubleshooting
+
+1. check the error message on the package install. run the below command and check the `usefulErrorMessage`
+
+`kubectl get pkgi -n <namespace> <package name> -o yaml`
+
+2. for even more details we can look at the app, the package is bubbling up app errors
+
+```bash
+kubectl get apps -n <namespace> <app name> -o yaml
+```
+
+
 
 
 ## Troubleshoot failing cluster deployment
+
+
 
 ## Upgrade TKG workload cluster
