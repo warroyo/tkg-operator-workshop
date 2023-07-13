@@ -468,7 +468,62 @@ kubectl get apps -n <namespace> <app name> -o yaml
 
 
 ## Troubleshoot failing cluster deployment
+Clusters can fail to deploy in a number of ways, for this exercise we will cause a failure with the loadbalancer for the control plane.
 
 
+### Create a failed cluster deployment
 
+1. go through a normal deploy using one of the methods we already covered above.
+2. find an in use IP address in the AVI vips and use that for the apiserverendpoint variable.
+3. create the cluster. at this point the cluster should fail to come up.
+
+### troubleshooting
+
+1. check tanzu cli to see the state of nodes etc.
+
+```bash
+tanzu cluster get <clustername>
+```
+
+2. we will notice that a control plane comes up but is stuck in a waiting for kubeadm state. let's check into this a bit further by looking at the `kcp` object. check the conditions
+
+```bash
+kubectl get kcp <clusterkcp-name> -o yaml
+```
+
+3. validate the control plane has an IP address
+
+4. since it's waiting for init that means maybe something is wrong with the bootstrap process. so the management cluster can't reach the api to validate it. let's check the loadbalancer
+
+```bash
+kubectl get svc
+```
+
+5. we see that the LB address is pending. this is likelty the issue. let's check the AVI UI and see if a vip exists. It doesnt.
+6. let's check the AKO logs to see if there is an issue.
+
+```bash
+kubectl logs -f -n avi-system ako-0
+```
+
+7. we will see an error about overlapping vips, this can also be seen in the avi event log in the UI.
 ## Upgrade TKG workload cluster
+
+
+Upgrading can be done through the tanzu cli or the TMC cli/ui.
+
+### Tanzu cli
+
+1. run the upgrade command
+
+```bash
+tanzu cluster upgrade <clustername>
+```
+
+### with TMC CLI
+
+1. run the upgrade command
+
+```bash
+tanzu tmc cluster upgrade -m <mgmt-name> -p <provisoner-name> <cluster-name>
+```
