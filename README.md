@@ -181,8 +181,7 @@ EOF
 
 #register the new mgmt cluster with tmc
 tanzu tmc management-cluster create -f mgmt.yaml
-tanzu management-cluster register <cluster-name> --continue-bootstrap
-kubectl apply -f k8s-register-manifest.yaml
+tanzu management-cluster register <cluster-name> -k ~/.kube/config
 ```
 
 2. check the agent status in the management cluster with kubectl
@@ -219,6 +218,37 @@ tanzu cluster create -f workload-cluster.yaml
 
 ### Using TMC
 
+this can be done using the CLI or the UI. In this example we will create through the UI and then run the commands from the CLI to get the cluster cofniguration and create a new cluster using the cli.
+
+**make sure clusters have enough cpu to run TMC agents. 1 node with 2vcpu is too small**
+
+#### Create using the UI
+
+follow the prompts in the UI to create a cluster. docs [here](https://docs.vmware.com/en/VMware-Tanzu-Mission-Control/services/tanzumc-using/GUID-C778E447-DDBB-49FC-B0B2-A8012AC56B0E.html#GUID-C778E447-DDBB-49FC-B0B2-A8012AC56B0E)
+
+
+#### Create using the CLI
+
+Using the previsouly created cluster we will generate a yanml config to create a cluster through the cli.
+
+1. get the existing cluster config
+
+```bash
+tanzu tmc cluster get <cluster-name>  -m <mgmt cluster name> -p <provisoner name> > new-tmc-cluster.yaml
+```
+
+2. cleanup the yaml and rename cluster
+   1. remove the entire `meta` section
+   2. change the cluster name
+   3. remove the entire `status` section
+   4. remove the variable for `apiServerEndpoint`
+   5. save the file
+
+3. create the cluster using the new file
+
+```bash
+tanzu tmc cluster create -f new-tmc-cluster.yaml
+```
 ### Using CAPI Cluster CRD
 
 This was referenced above when talking about cluster class based clusters. TKG now allows for use of the `cluster` CRD along with cluster classes to deploy TKG clusters. this means you can now manage clusters with native k8s yaml.
@@ -248,68 +278,145 @@ kubectl get cluster <clustername> -o yaml
 tanzu cluster get <clustername>
 ```
 
-
-## Custom cluster class
-
-https://docs.vmware.com/en/VMware-Tanzu-Kubernetes-Grid/2.2/using-tkg-22/workload-clusters-cclass.html
-
-
 ## Use a custom ADC when creating a cluster
 
 ### create an ADC
-[Docs](https://docs.vmware.com/en/VMware-Tanzu-Kubernetes-Grid/2.2/tkg-deploy-mc-22/mgmt-reqs-network-nsx-alb-ingress.html#nodeportlocal-for-antrea-cni-2)
+
 
 1. create an ADC to enable NPL. take the existing ADC that is default and copy it to a file
 ```bash
+kubectl get adc install-ako-for-all -o yaml > npl-adc.yml
 ```
-
-2. modify the ADC to enable NPL and add labels to make the new ADC selectable
+2. modify the ADC to enable NPL and add labels to make the new ADC selectable. this is outline in the [Docs](https://docs.vmware.com/en/VMware-Tanzu-Kubernetes-Grid/2.2/tkg-deploy-mc-22/mgmt-reqs-network-nsx-alb-ingress.html#nodeportlocal-for-antrea-cni-2). First we need to do some cleanup of the file
+   1. remove everything except for the `name` from the `metadata` section
+   2. change the name to `npl-adc`
+   3. add  `spec.clusterSelector.matchLabels. nsx-alb-node-port-local-l7: "true"` 
+   4. add `spec.extraConfigs.cniPlugin: antrea`
+   5. add `spec.extraConfigs.ingress.serviceType: NodePortLocal`
+   6. change `spec.extraConfigs.ingress.disableIngressClass: false`
+   
 3. apply the new ADC into the mgmt cluster
-4. 
-
-### Deploy cluster and reference ADC with Tanzu CLI
-
-1. using the label from above `nsx-alb-node-port-local-l7":"true"` add this to the cluster config when deploying.
-
-```bash
-AVI_LABELS: '{"nsx-alb-node-port-local-l7":"true"}'
-
-ANTREA_NODEPORTLOCAL: "true"
-```
+ ```bash
+ kubectl apply -f npl-adc.yml
+ ```  
+   
 
 ###  Deploy cluster and reference ADC with TMC
 
-1. using the label from above `nsx-alb-node-port-local-l7":"true"` add this to the cluster config when deploying.
-2. in the tmc UI this is a label when creating the cluster
+using our previous config file we have for creating a cluster with the TMC CLI we can add the new label to associate the newly created ADC with that cluster. 
+
+1. using the label from above `nsx-alb-node-port-local-l7":"true"` add this to the cluster config when deploying. The config file should have the below added. 
+
+```yaml
+labels:
+    nsx-alb-node-port-local-l7: "true"
+```
+
+2. validate it's using the new adc. the tkg cluster labels should now have a label for the avi ADC 
+
+```bash
+kubectl get clusters <cluster-name> -o yaml | grep -i avi
+```
+   
 
 ### Install a Tanzu package
 
-## Install Fluent bit
+Tanuz packages can be install with the tanzu cli, tmc, or through gitops. These are supported carvel packages for common OSS software. 
+
+## Install Fluent bit using TMC
+
+1. go into the tmc UI and go to the catalog and select fluent bit. this will show us all availabel values etc. This si helpful for seeing what's possible. 
+2. fluent bit config is exposed throught the package values, anything in the `config` section is direct from the fluent bit [docs](https://docs.fluentbit.io/manual/)
+3.  
+
+## Inspect the objects that it creates
+
+everything is a k8s object so it can be managed wit gitops also.
+
+1. check the package repository
+2. check the package install
+3. check the app
+4. check the values
 
 # Day 2 Ops
 
 ## Modify a cluster
 
-### Using Tanzu ClI
+Modifying a cluster can be done in a number of ways. We will cover modifying using CAPI as well as TMC.
 
+### using the CAPI cluster CRD
+
+let's modify the number of cpus that a worker node has.
+
+1. open up the cluster yaml that we previosuly used to create the cluster. Look for the section that shows how many cpus a worker has. it looks like the below yaml
+
+```yaml
+- name: worker
+      value:
+        count: 1
+        machine:
+          diskGiB: 40
+          memoryMiB: 8192
+          numCPUs: 2
+```
+2. update the `numCPUs` to 6
+3. apply the modified cluster yaml into the mgmt cluster.
+
+```bash
+kubectl apply -f workload-cc.yaml
+```
+4.  validate a new node is provisoned and the old one deleted.
+
+```bash
+kubectl get machines -n default | grep -i <clustername>
+```
 ### Using TMC
 
-### Using K8s
+let's modify the number of worker nodes a cluster has. this can be done using the UI as well.
+
+1. edit the cluster yaml that we used previosuly for creating the cluster with tmc and change the worker node count. the field to change is `spec.topology.nodePools.spec.replicas`
+2. update the cluster
+
+```bash
+tanzu tmc cluster update -f new-tmc-cluster.yaml
+```
+
+3. check the TMC GUI and validate the cluster has added a node
+4. check the tanzu cli and validate it shows a new node
+
+```bash
+tanzu cluster get <cluster-name>
+```
 
 ## Rotate the avi cert
 
+### Simulate failure and fix
+
 1. change the cert on AVI controller
    1. [docs](https://avinetworks.com/docs/latest/how-to-change-the-default-portal-certificate/)
-2. show what this looks like when it's broken in AKO
+   2. create a new cert and remove the old one. this will make the cert on tkg become out of date. simulating an expirng etc.
+2. show what this looks like when it's broken in AKO. you should see X509 errors. 
 
 ```bash
+#delete the pod 
+kubectl delete pod ako-0 -n avi-system
+kubectl logs -f -n avi-system ako-0
 ```
 
 3. rotate the cert and show fixed AKO
    1. [docs](https://docs.vmware.com/en/VMware-Tanzu-Kubernetes-Grid/2.2/tkg-deploy-mc-22/mgmt-reqs-network-nsx-alb-manage.html)
+   2. get the certificate from avi and base64 encode it
+   3. patch the secret in the mgmt cluster
+
+```bash
+kubectl patch secret/avi-controller-ca  -n tkg-system-networking -p '{"data": {"certificateAuthorityData": "<ca-data>"}}'
+```
+   4. restart the ako operator pod in the tkg-system-networking ns
 
 
 ## Troubleshoot Tanzu packages
+
+
 
 ## Troubleshoot failing cluster deployment
 
